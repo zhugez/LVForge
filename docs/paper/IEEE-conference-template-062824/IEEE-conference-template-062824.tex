@@ -19,8 +19,8 @@
 
 \begin{document}
 
-\title{From Ensemble and DistilBERT Baselines to Deep Metric Learning:\\
-{\color{ctitle}An Extended Study for Imbalanced Windows PE Malware Detection}}
+\title{LVForge: PE Malware Detection from Strong Baselines to Deep Metric Learning\\
+{\color{ctitle}A Practical and Reproducible Study}}
 
 \author{\IEEEauthorblockN{Ly Ngoc Vu}
 \IEEEauthorblockA{\textit{Industrial University of Ho Chi Minh City} \\
@@ -30,109 +30,98 @@ dezzhuge@gmail.com}}
 \maketitle
 
 \begin{abstract}
-Windows PE malware detection requires high recall under strict false-positive constraints, especially for imbalanced real-world data. This paper extends a prior ATC 2024 study that evaluated classical machine learning and text-based deep learning baselines. The extension introduces a deep metric learning (DML) branch on a shared Transformer backbone and compares five variants: baseline classification, ArcFace, Contrastive, Triplet, and Multi-Similarity. Evaluation uses multi-seed reporting and deployment-oriented metrics, including TPR@FPR operating points. Experimental results show that DML is beneficial but objective-dependent: Multi-Similarity provides the strongest overall operating profile, while ArcFace is unstable in strict low-FPR conditions despite high ranking metrics. The study provides practical guidance for objective selection in operational malware detection pipelines.
+This paper explains, in a practical step-by-step manner, what was built in LVForge for Windows PE malware detection and why each component was added. The previous stage of this project compared classical machine learning and text-based deep learning baselines on a large PE dataset. In this stage, the pipeline is extended with deep metric learning on top of a shared Transformer backbone (LVModel). Five variants are evaluated under the same data and training protocol: baseline, ArcFace, Contrastive, Triplet, and Multi-Similarity. Results are reported with multi-seed statistics and deployment-oriented metrics, including TPR at low FPR. The key outcome is that Multi-Similarity provides the most reliable operating profile, while ArcFace is unstable at strict low-FPR thresholds. The paper focuses on clarity and reproducibility so that first-time readers can directly understand what was done, how it was implemented, and what should be used in practice.
 \end{abstract}
 
 \begin{IEEEkeywords}
-malware detection, PE files, deep metric learning, Transformer, low-FPR evaluation
+malware detection, PE files, Transformer, deep metric learning, low-FPR evaluation, reproducibility
 \end{IEEEkeywords}
 
 \section{\textcolor{ctitle}{Introduction}}
-Malware detection on Windows PE files remains a high-impact cybersecurity task under evolving adversarial behavior and class-imbalanced data distributions \cite{sorel,bodmas}. Although modern classifiers often report high aggregate accuracy, real deployments are constrained by strict false-positive-rate (FPR) budgets, where threshold behavior is more informative than global metrics \cite{calibration,oodsecurity}. Prior results in the same project line showed that both optimized machine learning and text-based deep learning are strong baselines for PE classification \cite{atc2024}.
+Windows PE malware detection is important in real systems where even a small false-positive rate can create major operational cost. A model with high overall accuracy may still fail under strict deployment thresholds. Therefore, this work focuses on both global metrics (Accuracy/F1/AUC) and operating-point metrics (TPR@FPR).
 
-This paper extends that baseline study with deep metric learning (DML), motivated by the need for better class separation in highly imbalanced settings \cite{arcface,triplet,contrastive,msloss}. The central question is not whether DML can improve ranking metrics alone, but whether it improves low-FPR operational behavior.
+This paper is written as a clear ``what was built'' report for first-time readers. It consolidates knowledge from the previous project stage and the current implementation:
+\begin{itemize}
+\item \textbf{Previous stage:} strong baselines using Logistic Regression, Random Forest, SVC, XGBoost, and text-based deep models (LSTM, BiLSTM, DistilBERT) \cite{atc2024}.
+\item \textbf{Current stage:} a unified Flax/JAX Transformer (LVModel) plus deep metric learning objectives.
+\end{itemize}
 
-The main contributions are:
+\textbf{Main contributions of this paper:}
 \begin{enumerate}
-\item A controlled objective-level comparison of baseline, ArcFace, Contrastive, Triplet, and Multi-Similarity on a shared Transformer backbone.
-\item Multi-seed evaluation with deployment-oriented metrics, including TPR@FPR targets.
-\item An operational analysis showing that objective choice materially affects low-FPR reliability.
+\item A clear transition from baseline classification to metric-learning variants in one reproducible pipeline.
+\item A detailed architectural breakdown of LVModel from tensor flow to training heads.
+\item A practical interpretation of results under low-FPR deployment constraints.
 \end{enumerate}
 
-The remainder of this paper is organized as follows. Section II positions the extension relative to prior work. Section III summarizes the methodology and system design. Section IV presents experiments and results. Section V discusses implications and validity threats. Section VI concludes and outlines future work.
+\section{\textcolor{ctitle}{What Was Done: Old vs New}}
+\subsection{Previous Project Stage}
+The previous paper established a strong foundation on PE malware detection using:
+\begin{itemize}
+\item classical ML baselines (Logistic Regression, Random Forest, SVC, XGBoost),
+\item ensemble methods,
+\item text-based deep models (LSTM, BiLSTM, DistilBERT),
+\item and a large PE dataset setting (\textasciitilde34k samples) \cite{atc2024,sorel,bodmas}.
+\end{itemize}
 
-\section{\textcolor{ctitle}{Related Work and Extension Scope}}
-\subsection{Prior ATC 2024 Results}
-The prior paper reported:
-\begin{enumerate}
-\item Classical ML models: Logistic Regression, Random Forest, SVC, XGBoost, plus ensemble voting/stacking.
-\item Text-based deep learning models: LSTM, BiLSTM, DistilBERT.
-\item Large PE dataset setting (\textasciitilde34k samples) with high performance.
-\end{enumerate}
-
-\subsection{Extension in This Paper}
-Recent metric-learning objectives, including ArcFace, Triplet, Contrastive, and Multi-Similarity, are widely adopted for discriminative embedding learning \cite{arcface,triplet,contrastive,msloss,dmlsurvey}. However, comparative evidence in PE malware settings under strict operating points is limited.
-
-This work extends prior results by adding:
-\begin{enumerate}
-\item Objective-level study of DML variants.
-\item Multi-seed statistical evaluation.
-\item Deployment-oriented low-FPR analysis.
-\end{enumerate}
+\subsection{Current Project Stage}
+In this stage, the core addition is deep metric learning on top of the same backbone and data pipeline. Instead of changing everything at once, only the objective/head is changed while keeping the encoder trunk shared. This makes comparisons fair and easier to interpret.
 
 \section{\textcolor{ctitle}{Methodology}}
-A shared Transformer backbone is used, while objectives/heads vary:
-\begin{enumerate}
-\item baseline: cross-entropy/focal classification.
-\item arcface: angular margin objective.
-\item contrastive: pairwise distance objective + classification.
-\item triplet: relative distance objective with hard mining.
-\item multi\_similarity: weighted hard-pair similarity objective.
-\end{enumerate}
+\subsection{Task and Data Setting}
+The binary task is benign vs malware classification from PE-derived text-like features. The current training setting uses an imbalanced ratio near 1:19 (benign:malware), which is exactly why threshold-sensitive evaluation is required.
 
-\subsection{Experimental Setup}
-The dataset setting follows the prior project pipeline and preserves the same PE text-feature processing strategy \cite{atc2024}. The extended pipeline evaluates five variants through a single runner and stores per-variant outputs for reproducibility. Model quality is assessed by Accuracy, Precision, Recall, F1, ROC-AUC, and PR-AUC. Operational reliability is measured with TPR@FPR points to reflect defender-oriented deployment constraints.
+\subsection{LVModel Architecture (Core Encoder)}
+LVModel is a Transformer encoder classifier implemented in Flax/JAX.
 
-\subsection{LVModel Architecture Details}
-The base LVModel is a Transformer encoder classifier implemented in Flax/JAX. Let input token IDs be
-$\mathbf{X}\in\mathbb{N}^{B\times T}$, where $B$ is batch size and $T$ is sequence length (capped by $T\leq 380$ in the current setup).
+Let input token IDs be $\mathbf{X}\in\mathbb{N}^{B\times T}$.
 
-\textbf{Embedding and positional encoding:}
+\textbf{(1) Input representation}
 \begin{equation}
-\mathbf{H}_0 = E_{\text{tok}}(\mathbf{X}) + E_{\text{pos}}(1{:}T),
+\mathbf{H}_0 = E_{tok}(\mathbf{X}) + E_{pos}(1{:}T).
 \end{equation}
-where both embedding tables use normal initialization ($\sigma=0.02$).
+This combines token embedding and positional embedding.
 
-\textbf{Shared MHA block implementation:}
-for each encoder layer, a single dense projection computes concatenated QKV:
+\textbf{(2) Multi-Head Self-Attention block}
+A single dense layer computes concatenated QKV:
 \begin{equation}
-\mathrm{QKV} = W_{qkv}\mathbf{H}\in\mathbb{R}^{B\times T\times 3d},
+\mathrm{QKV}=W_{qkv}\mathbf{H}\in\mathbb{R}^{B\times T\times 3d}.
 \end{equation}
-then reshaped to $(3,B,h,T,d_h)$ where $d_h=d/h$ and $h$ is head count.
-Attention logits use scaled dot-product:
+Then Q, K, V are reshaped per head and attention is computed by:
 \begin{equation}
-\mathbf{S} = \frac{\mathbf{Q}\mathbf{K}^{\top}}{\sqrt{d_h}},\quad
-\mathbf{A}=\mathrm{softmax}(\mathbf{S}),
+\mathbf{A}=\mathrm{softmax}\left(\frac{QK^\top}{\sqrt{d_h}}\right).
 \end{equation}
-followed by attention dropout and output projection back to $d$ dimensions.
+The attended output is projected back to model dimension $d$.
 
-\textbf{Encoder block design (pre-norm):}
-each layer applies LayerNorm before attention and feed-forward modules:
+\textbf{(3) Transformer layer design (pre-norm + residual)}
+Each layer uses pre-normalization and two residual paths:
 \begin{align}
-\tilde{\mathbf{H}} &= \mathrm{LN}(\mathbf{H}_{l-1}),\\
-\mathbf{A} &= \mathrm{MHA}(\tilde{\mathbf{H}}), \quad
-\mathbf{H}' = \mathbf{H}_{l-1} + \mathbf{A},\\
-\mathbf{F} &= W_2\,\mathrm{Dropout}\!\left(\mathrm{GELU}\!\left(W_1\,\mathrm{LN}(\mathbf{H}')\right)\right),\\
-\mathbf{H}_{l} &= \mathbf{H}' + \mathrm{Dropout}(\mathbf{F}).
+\tilde{\mathbf{H}} &= \mathrm{LN}(\mathbf{H}_{l-1}), \\
+\mathbf{H}' &= \mathbf{H}_{l-1} + \mathrm{MHA}(\tilde{\mathbf{H}}), \\
+\mathbf{H}_{l} &= \mathbf{H}' + \mathrm{FFN}(\mathrm{LN}(\mathbf{H}')).
 \end{align}
-This is a \textbf{pre-norm Transformer} with two residual paths (attention and FFN), improving optimization stability.
+The FFN is two linear layers with GELU and dropout.
 
-\textbf{Pooling and classification:}
-the sequence representation is mean pooled and passed through a tanh pooler and LayerNorm classifier:
-\begin{align}
-\mathbf{z} &= \frac{1}{T}\sum_{t=1}^{T}\mathbf{H}_{L,t},\\
-\mathbf{p} &= \tanh(W_p\mathbf{z}),\\
-\mathbf{y} &= W_c\,\mathrm{LN}(\mathrm{Dropout}(\mathbf{p})).
-\end{align}
-In experiments, the instantiated architecture uses $d_{\text{model}}=256$, $h=8$, $d_{\text{ff}}=512$, and $L=2$.
+\textbf{(4) Classification path}
+After stacking encoder layers, sequence features are mean-pooled:
+\begin{equation}
+\mathbf{z}=\frac{1}{T}\sum_{t=1}^{T}\mathbf{H}_{L,t}.
+\end{equation}
+Then LVModel applies dense+tanh pooler, dropout, LayerNorm, and final classifier logits.
 
-\textbf{Metric-learning variants:}
-ArcFace, Contrastive, Triplet, and Multi-Similarity share the same encoder trunk, then add an embedding projection
-($d_{\text{emb}}=256$), LayerNorm, and $\ell_2$ normalization. The projected embedding is consumed by a task-specific head:
-ArcFace angular-margin classifier, or linear logits with auxiliary metric losses (contrastive/triplet/MS).
+\textbf{Configuration used in experiments:}
+$d_{model}=256$, heads $=8$, $d_{ff}=512$, layers $=2$, max length $=380$.
 
-\subsection{Pipeline Overview}
-Figure~\ref{fig:pipeline} summarizes the end-to-end training and evaluation flow used for baseline and DML variants.
+\subsection{Metric-Learning Extensions}
+All variants share the same encoder trunk. For metric-learning variants, an additional projection to $d_{emb}=256$ is used, followed by LayerNorm and $\ell_2$ normalization of embeddings. Variant-specific heads/objectives are:
+\begin{itemize}
+\item \textbf{ArcFace:} angular margin classification \cite{arcface},
+\item \textbf{Contrastive:} pair similarity/distance regularization \cite{contrastive},
+\item \textbf{Triplet:} relative-distance margin optimization \cite{triplet},
+\item \textbf{Multi-Similarity:} weighted hard pair optimization \cite{msloss}.
+\end{itemize}
+
+\subsection{End-to-End Pipeline}
+Figure~\ref{fig:pipeline} summarizes the full workflow used in practice.
 \begin{figure*}[!t]
 \centering
 \resizebox{\textwidth}{!}{%
@@ -146,14 +135,9 @@ Figure~\ref{fig:pipeline} summarizes the end-to-end training and evaluation flow
 ]
     \node[stage] (data) {PE Dataset\\(Texts, label)};
     \node[stage, right=of data] (prep) {Tokenizer\\+ Preprocessing};
-    \node[core, right=of prep] (backbone) {Shared Transformer\\Backbone};
-    \node[block, right=of backbone] (heads) {\textbf{Objective-head variants}\\[-0.4mm]
-        - baseline (CE/Focal)\\
-        - arcface\\
-        - contrastive\\
-        - triplet\\
-        - multi\_similarity};
-    \node[evalbox, right=of heads] (train) {Training +\\Checkpointing};
+    \node[core, right=of prep] (backbone) {Shared LVModel\\Transformer Backbone};
+    \node[block, right=of backbone] (heads) {Objective-head variants\\- baseline (CE/Focal)\\- arcface\\- contrastive\\- triplet\\- multi\_similarity};
+    \node[evalbox, right=of heads] (train) {Training\\+ Checkpointing};
     \node[evalbox, right=of train] (eval) {Evaluation\\(5 seeds, low-FPR)};
 
     \draw[arrow] (data) -- (prep);
@@ -167,9 +151,9 @@ Figure~\ref{fig:pipeline} summarizes the end-to-end training and evaluation flow
 \end{figure*}
 
 \section{\textcolor{ctitle}{Results}}
-\subsection{Prior ATC 2024 Baselines}
+\subsection{Reference Baselines from Previous Stage}
 \begin{table}[htbp]
-\caption{ML baselines from prior paper}
+\caption{ML baselines from prior paper \cite{atc2024}}
 \centering
 \footnotesize
 \begin{tabular}{lcccc}
@@ -187,7 +171,7 @@ XGBoost & 0.990000 & 0.991542 & 0.991566 & 0.991566 \\
 \end{table}
 
 \begin{table}[htbp]
-\caption{Deep learning baselines from prior paper}
+\caption{Deep learning baselines from prior paper \cite{atc2024}}
 \centering
 \footnotesize
 \begin{tabular}{lcccc}
@@ -203,7 +187,7 @@ BiLSTM & 0.9507005 & 0.9499545 & 0.9500705 & 0.950102 \\
 \label{tab:prior_dl}
 \end{table}
 
-\subsection{New DML Results}
+\subsection{Current Stage: DML Comparison}
 \begin{table}[htbp]
 \caption{Aggregated 5-seed metrics (mean)}
 \centering
@@ -226,45 +210,47 @@ multi\_similarity & \textbf{0.9946} & \textbf{0.9972} & 0.9978 & 0.9999 & \textb
 \label{tab:new_results}
 \end{table}
 
-\section{\textcolor{ctitle}{Discussion}}
-The results indicate that DML is helpful but not uniformly so. Multi-Similarity yields the strongest overall profile, improving low-FPR sensitivity while maintaining top-tier F1 and accuracy. Baseline remains highly competitive, indicating a strong representation backbone and training recipe. ArcFace shows a notable mismatch between ranking quality and low-FPR behavior, suggesting sensitivity to margin-scale calibration under class imbalance.
+\textbf{What these numbers mean in practice:}
+\begin{itemize}
+\item Multi-Similarity is the strongest overall choice for deployment.
+\item Baseline is still robust and can serve as fallback/reference.
+\item ArcFace is unstable for strict low-FPR operation in this setting.
+\item Runtime across variants remains in a comparable practical range (about 94--133s per run variant in current setup).
+\end{itemize}
 
-Main findings:
+\section{\textcolor{ctitle}{Discussion and Deployment Guidance}}
+This work shows that adding metric learning is useful when objective choice is careful. The shared trunk + variant-head design made it easy to isolate what actually improved performance. For production-oriented usage:
 \begin{enumerate}
-\item DML helps, but improvements are objective-dependent.
-\item Multi-Similarity is strongest overall in this setup.
-\item Baseline remains highly competitive.
-\item ArcFace requires further calibration/tuning for strict low-FPR deployment.
+\item prioritize operating-point metrics (TPR@FPR), not only accuracy,
+\item use Multi-Similarity as primary candidate,
+\item keep baseline as a stable reference,
+\item recalibrate thresholds when data distribution shifts.
 \end{enumerate}
 
 \subsection{Threats to Validity}
-\begin{enumerate}
-\item \textbf{Single-domain evaluation}: results are derived from one PE data pipeline; broader cross-dataset validation is needed.
-\item \textbf{Seed count}: five-seed reporting improves stability estimates but does not eliminate uncertainty.
-\item \textbf{Calibration sensitivity}: thresholded performance may shift under temporal drift and distribution changes.
-\item \textbf{Static-feature bias}: packed or heavily obfuscated binaries may require additional dynamic/contextual signals.
-\end{enumerate}
+\begin{itemize}
+\item single-domain pipeline evaluation,
+\item limited seed count,
+\item potential calibration sensitivity under temporal drift,
+\item static-feature limitations for packed/obfuscated binaries.
+\end{itemize}
 
 \section{\textcolor{ctitle}{Conclusion}}
-This extended study confirms that text-based PE malware detection can achieve high performance and that DML can further improve deployment-oriented behavior when the objective is carefully selected. Multi-Similarity is the recommended candidate in the current experiments.
-
-\subsection*{Future Work}
-Planned next steps include explicit calibration studies, statistical significance testing across objectives, cross-dataset generalization experiments, and robustness analysis under packing/obfuscation and temporal drift.
+For first-time readers, the core message is simple: this project started from strong baselines, then added a carefully controlled metric-learning extension on the same LVModel backbone. The implementation is reproducible, the architectural changes are explicit, and results indicate that Multi-Similarity gives the best operational profile under the tested PE malware setting.
 
 \section*{Acknowledgment}
-This work extends the authors' prior ATC 2024 study and integrates new metric-learning experiments and analysis.
+This work builds on the author's previous project stage and extends it with architecture-level and objective-level analysis.
 
 \begin{thebibliography}{00}
-\bibitem{atc2024} L. N. Vu and D. T. Phuc, "Windows Malware Detection: Exploring from Machine Learning to Text-Based Deep Learning Approaches," in Proc. ATC, 2024.
-\bibitem{arcface} J. Deng et al., "ArcFace: Additive Angular Margin Loss for Deep Face Recognition," CVPR, 2019.
-\bibitem{msloss} X. Wang et al., "Multi-Similarity Loss with General Pair Weighting for Deep Metric Learning," CVPR, 2019.
-\bibitem{triplet} F. Schroff et al., "FaceNet: A Unified Embedding for Face Recognition and Clustering," CVPR, 2015.
-\bibitem{contrastive} R. Hadsell et al., "Dimensionality Reduction by Learning an Invariant Mapping," CVPR, 2006.
-\bibitem{sorel} A. Harang and E. M. Rudd, "SOREL-20M: A Large Scale Benchmark Dataset for Malicious PE Detection," arXiv:2012.07634, 2020.
-\bibitem{bodmas} BODMAS Dataset, "Benchmark for malware analysis at scale," 2021.
-\bibitem{dmlsurvey} W. Zheng, J.-H. Lai, and P. C. Yuen, "A Survey on Deep Metric Learning: Approaches and Applications," arXiv:2303.15032, 2023.
-\bibitem{calibration} C. Guo et al., "On Calibration of Modern Neural Networks," ICML, 2017.
-\bibitem{oodsecurity} S. Wang et al., "A Comprehensive Survey of Out-of-Distribution Detection Methods for AI Security," ACM Comput. Surv., 2024.
+\bibitem{atc2024} L. N. Vu, ``Windows Malware Detection: Exploring from Machine Learning to Text-Based Deep Learning Approaches,'' in Proc. ATC, 2024.
+\bibitem{arcface} J. Deng \textit{et al.}, ``ArcFace: Additive Angular Margin Loss for Deep Face Recognition,'' CVPR, 2019.
+\bibitem{msloss} X. Wang \textit{et al.}, ``Multi-Similarity Loss with General Pair Weighting for Deep Metric Learning,'' CVPR, 2019.
+\bibitem{triplet} F. Schroff \textit{et al.}, ``FaceNet: A Unified Embedding for Face Recognition and Clustering,'' CVPR, 2015.
+\bibitem{contrastive} R. Hadsell \textit{et al.}, ``Dimensionality Reduction by Learning an Invariant Mapping,'' CVPR, 2006.
+\bibitem{sorel} A. Harang and E. M. Rudd, ``SOREL-20M: A Large Scale Benchmark Dataset for Malicious PE Detection,'' arXiv:2012.07634, 2020.
+\bibitem{bodmas} BODMAS Dataset, ``Benchmark for malware analysis at scale,'' 2021.
+\bibitem{calibration} C. Guo \textit{et al.}, ``On Calibration of Modern Neural Networks,'' ICML, 2017.
+\bibitem{oodsecurity} S. Wang \textit{et al.}, ``A Comprehensive Survey of Out-of-Distribution Detection Methods for AI Security,'' ACM Comput. Surv., 2024.
 \end{thebibliography}
 
 \end{document}
