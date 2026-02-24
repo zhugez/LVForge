@@ -176,27 +176,6 @@ multi\_similarity & \textbf{0.9946} & \textbf{0.9972} & 0.9978 & 0.9999 & \textb
 \label{tab:new_results}
 \end{table}
 
-\begin{figure}[htbp]
-\centering
-\includegraphics[width=\columnwidth]{figures/dml_acc_f1.png}
-\caption{Accuracy and F1 across DML variants (5-seed mean).}
-\label{fig:accf1}
-\end{figure}
-
-\begin{figure}[htbp]
-\centering
-\includegraphics[width=\columnwidth]{figures/dml_runtime.png}
-\caption{Single-run runtime per variant.}
-\label{fig:runtime}
-\end{figure}
-
-\begin{figure}[htbp]
-\centering
-\includegraphics[width=\columnwidth]{figures/dml_lowfpr.png}
-\caption{Low-FPR sensitivity comparison; ArcFace is unstable at strict operating point.}
-\label{fig:lowfpr}
-\end{figure}
-
 \section{Discussion}
 The results indicate that DML is helpful but not uniformly so. Multi-Similarity yields the strongest overall profile, improving low-FPR sensitivity while maintaining top-tier F1 and accuracy. Baseline remains highly competitive, indicating a strong representation backbone and training recipe. ArcFace shows a notable mismatch between ranking quality and low-FPR behavior, suggesting sensitivity to margin-scale calibration under class imbalance.
 
