@@ -32,7 +32,7 @@ phucdt@iuh.edu.vn}}
 \maketitle
 
 \begin{abstract}
-This paper extends a prior ATC 2024 study on Windows PE malware detection, which compared machine learning ensembles and text-based deep learning models (LSTM, BiLSTM, DistilBERT). The previous version achieved strong performance near 99\% accuracy on a large PE dataset. In this extended version, we add a deep metric learning (DML) branch on a unified Transformer backbone and evaluate five variants: baseline classification, ArcFace, Contrastive, Triplet, and Multi-Similarity. We report multi-seed statistics and low-false-positive operating behavior (TPR@FPR) for deployment-oriented analysis. Results show that DML is useful but objective-dependent: Multi-Similarity is strongest overall, while ArcFace is unstable under strict low-FPR operation.
+Windows PE malware detection requires high recall under strict false-positive constraints, especially for imbalanced real-world data. This paper extends a prior ATC 2024 study that evaluated classical machine learning and text-based deep learning baselines. The extension introduces a deep metric learning (DML) branch on a shared Transformer backbone and compares five variants: baseline classification, ArcFace, Contrastive, Triplet, and Multi-Similarity. Evaluation uses multi-seed reporting and deployment-oriented metrics, including TPR@FPR operating points. Experimental results show that DML is beneficial but objective-dependent: Multi-Similarity provides the strongest overall operating profile, while ArcFace is unstable in strict low-FPR conditions despite high ranking metrics. The study provides practical guidance for objective selection in operational malware detection pipelines.
 \end{abstract}
 
 \begin{IEEEkeywords}
@@ -40,11 +40,20 @@ malware detection, PE files, deep metric learning, Transformer, low-FPR evaluati
 \end{IEEEkeywords}
 
 \section{Introduction}
-Malware detection on Windows PE files remains challenging under severe class imbalance and strict false-positive requirements. Prior experiments using classical ML and text-based deep learning showed strong aggregate accuracy. However, deployment effectiveness depends on behavior at strict operating points, not only global metrics.
+Malware detection on Windows PE files remains a high-impact cybersecurity task under evolving adversarial behavior and class-imbalanced data distributions \cite{sorel,bodmas}. Although modern classifiers often report high aggregate accuracy, real deployments are constrained by strict false-positive-rate (FPR) budgets, where threshold behavior is more informative than global metrics \cite{calibration,oodsecurity}. Prior results in the same project line showed that both optimized machine learning and text-based deep learning are strong baselines for PE classification \cite{atc2024}.
 
-This extension introduces deep metric learning (DML) objectives and compares them under a unified pipeline to assess both classification quality and low-FPR sensitivity.
+This paper extends that baseline study with deep metric learning (DML), motivated by the need for better class separation in highly imbalanced settings \cite{arcface,triplet,contrastive,msloss}. The central question is not whether DML can improve ranking metrics alone, but whether it improves low-FPR operational behavior.
 
-\section{Relationship to Prior Work}
+The main contributions are:
+\begin{enumerate}
+\item A controlled objective-level comparison of baseline, ArcFace, Contrastive, Triplet, and Multi-Similarity on a shared Transformer backbone.
+\item Multi-seed evaluation with deployment-oriented metrics, including TPR@FPR targets.
+\item An operational analysis showing that objective choice materially affects low-FPR reliability.
+\end{enumerate}
+
+The remainder of this paper is organized as follows. Section II positions the extension relative to prior work. Section III summarizes the methodology and system design. Section IV presents experiments and results. Section V discusses implications and validity threats. Section VI concludes and outlines future work.
+
+\section{Related Work and Extension Scope}
 \subsection{Prior ATC 2024 Results}
 The prior paper reported:
 \begin{enumerate}
@@ -54,7 +63,9 @@ The prior paper reported:
 \end{enumerate}
 
 \subsection{Extension in This Paper}
-This work adds:
+Recent metric-learning objectives, including ArcFace, Triplet, Contrastive, and Multi-Similarity, are widely adopted for discriminative embedding learning \cite{arcface,triplet,contrastive,msloss,dmlsurvey}. However, comparative evidence in PE malware settings under strict operating points is limited.
+
+This work extends prior results by adding:
 \begin{enumerate}
 \item Objective-level study of DML variants.
 \item Multi-seed statistical evaluation.
@@ -70,6 +81,9 @@ A shared Transformer backbone is used, while objectives/heads vary:
 \item triplet: relative distance objective with hard mining.
 \item multi\_similarity: weighted hard-pair similarity objective.
 \end{enumerate}
+
+\subsection{Experimental Setup}
+The dataset setting follows the prior project pipeline and preserves the same PE text-feature processing strategy \cite{atc2024}. The extended pipeline evaluates five variants through a single runner and stores per-variant outputs for reproducibility. Model quality is assessed by Accuracy, Precision, Recall, F1, ROC-AUC, and PR-AUC. Operational reliability is measured with TPR@FPR points to reflect defender-oriented deployment constraints.
 
 \subsection{Pipeline Overview}
 \begin{figure*}[!t]
@@ -184,6 +198,8 @@ multi\_similarity & \textbf{0.9946} & \textbf{0.9972} & 0.9978 & 0.9999 & \textb
 \end{figure}
 
 \section{Discussion}
+The results indicate that DML is helpful but not uniformly so. Multi-Similarity yields the strongest overall profile, improving low-FPR sensitivity while maintaining top-tier F1 and accuracy. Baseline remains highly competitive, indicating a strong representation backbone and training recipe. ArcFace shows a notable mismatch between ranking quality and low-FPR behavior, suggesting sensitivity to margin-scale calibration under class imbalance.
+
 Main findings:
 \begin{enumerate}
 \item DML helps, but improvements are objective-dependent.
@@ -192,8 +208,19 @@ Main findings:
 \item ArcFace requires further calibration/tuning for strict low-FPR deployment.
 \end{enumerate}
 
+\subsection{Threats to Validity}
+\begin{enumerate}
+\item \textbf{Single-domain evaluation}: results are derived from one PE data pipeline; broader cross-dataset validation is needed.
+\item \textbf{Seed count}: five-seed reporting improves stability estimates but does not eliminate uncertainty.
+\item \textbf{Calibration sensitivity}: thresholded performance may shift under temporal drift and distribution changes.
+\item \textbf{Static-feature bias}: packed or heavily obfuscated binaries may require additional dynamic/contextual signals.
+\end{enumerate}
+
 \section{Conclusion}
 This extended study confirms that text-based PE malware detection can achieve high performance and that DML can further improve deployment-oriented behavior when the objective is carefully selected. Multi-Similarity is the recommended candidate in the current experiments.
+
+\subsection*{Future Work}
+Planned next steps include explicit calibration studies, statistical significance testing across objectives, cross-dataset generalization experiments, and robustness analysis under packing/obfuscation and temporal drift.
 
 \section*{Acknowledgment}
 This work extends the authors' prior ATC 2024 study and integrates new metric-learning experiments and analysis.
@@ -204,6 +231,11 @@ This work extends the authors' prior ATC 2024 study and integrates new metric-le
 \bibitem{msloss} X. Wang et al., "Multi-Similarity Loss with General Pair Weighting for Deep Metric Learning," CVPR, 2019.
 \bibitem{triplet} F. Schroff et al., "FaceNet: A Unified Embedding for Face Recognition and Clustering," CVPR, 2015.
 \bibitem{contrastive} R. Hadsell et al., "Dimensionality Reduction by Learning an Invariant Mapping," CVPR, 2006.
+\bibitem{sorel} A. Harang and E. M. Rudd, "SOREL-20M: A Large Scale Benchmark Dataset for Malicious PE Detection," arXiv:2012.07634, 2020.
+\bibitem{bodmas} BODMAS Dataset, "Benchmark for malware analysis at scale," 2021.
+\bibitem{dmlsurvey} W. Zheng, J.-H. Lai, and P. C. Yuen, "A Survey on Deep Metric Learning: Approaches and Applications," arXiv:2303.15032, 2023.
+\bibitem{calibration} C. Guo et al., "On Calibration of Modern Neural Networks," ICML, 2017.
+\bibitem{oodsecurity} S. Wang et al., "A Comprehensive Survey of Out-of-Distribution Detection Methods for AI Security," ACM Comput. Surv., 2024.
 \end{thebibliography}
 
 \end{document}
