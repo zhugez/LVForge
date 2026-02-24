@@ -1,0 +1,34 @@
+[build-system]
+requires = ["setuptools>=68.0", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "pe-malware-detection"
+version = "1.0.0"
+description = "PE Malware Detection using Custom Transformers with Deep Metric Learning"
+requires-python = ">=3.9"
+dependencies = [
+    "torch>=2.0",
+    "jax[cuda12]>=0.4",
+    "flax>=0.8",
+    "optax>=0.2",
+    "transformers>=4.30",
+    "scikit-learn>=1.3",
+    "pandas>=2.0",
+    "numpy>=1.24",
+    "plotly>=5.15",
+    "scipy>=1.11",
+]
+
+[project.optional-dependencies]
+dev = [
+    "pytest>=7.0",
+    "ruff>=0.1",
+]
+
+[tool.setuptools.packages.find]
+where = ["src"]
+
+[tool.ruff]
+line-length = 120
+target-version = "py39"
