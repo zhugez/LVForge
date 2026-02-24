@@ -6,18 +6,21 @@
 \usepackage{graphicx}
 \usepackage{textcomp}
 \usepackage{xcolor}
+\usepackage{colortbl}
 \usepackage{booktabs}
 \usepackage{tikz}
 \usepackage{pgfplots}
 \pgfplotsset{compat=1.18}
 \usetikzlibrary{arrows.meta,positioning,shapes.geometric,fit}
+\definecolor{ctitle}{HTML}{2c2739}
+\definecolor{mypurple}{HTML}{d2cce1}
 \def\BibTeX{{\rm B\kern-.05em{\sc i\kern-.025em b}\kern-.08em
     T\kern-.1667em\lower.7ex\hbox{E}\kern-.125emX}}
 
 \begin{document}
 
 \title{From Ensemble and DistilBERT Baselines to Deep Metric Learning:\\
-An Extended Study for Imbalanced Windows PE Malware Detection}
+{\color{ctitle}An Extended Study for Imbalanced Windows PE Malware Detection}}
 
 \author{\IEEEauthorblockN{Ly Ngoc Vu}
 \IEEEauthorblockA{\textit{Industrial University of Ho Chi Minh City} \\
@@ -39,7 +42,7 @@ Windows PE malware detection requires high recall under strict false-positive co
 malware detection, PE files, deep metric learning, Transformer, low-FPR evaluation
 \end{IEEEkeywords}
 
-\section{Introduction}
+\section{\textcolor{ctitle}{Introduction}}
 Malware detection on Windows PE files remains a high-impact cybersecurity task under evolving adversarial behavior and class-imbalanced data distributions \cite{sorel,bodmas}. Although modern classifiers often report high aggregate accuracy, real deployments are constrained by strict false-positive-rate (FPR) budgets, where threshold behavior is more informative than global metrics \cite{calibration,oodsecurity}. Prior results in the same project line showed that both optimized machine learning and text-based deep learning are strong baselines for PE classification \cite{atc2024}.
 
 This paper extends that baseline study with deep metric learning (DML), motivated by the need for better class separation in highly imbalanced settings \cite{arcface,triplet,contrastive,msloss}. The central question is not whether DML can improve ranking metrics alone, but whether it improves low-FPR operational behavior.
@@ -53,7 +56,7 @@ The main contributions are:
 
 The remainder of this paper is organized as follows. Section II positions the extension relative to prior work. Section III summarizes the methodology and system design. Section IV presents experiments and results. Section V discusses implications and validity threats. Section VI concludes and outlines future work.
 
-\section{Related Work and Extension Scope}
+\section{\textcolor{ctitle}{Related Work and Extension Scope}}
 \subsection{Prior ATC 2024 Results}
 The prior paper reported:
 \begin{enumerate}
@@ -72,7 +75,7 @@ This work extends prior results by adding:
 \item Deployment-oriented low-FPR analysis.
 \end{enumerate}
 
-\section{Methodology}
+\section{\textcolor{ctitle}{Methodology}}
 A shared Transformer backbone is used, while objectives/heads vary:
 \begin{enumerate}
 \item baseline: cross-entropy/focal classification.
@@ -85,7 +88,56 @@ A shared Transformer backbone is used, while objectives/heads vary:
 \subsection{Experimental Setup}
 The dataset setting follows the prior project pipeline and preserves the same PE text-feature processing strategy \cite{atc2024}. The extended pipeline evaluates five variants through a single runner and stores per-variant outputs for reproducibility. Model quality is assessed by Accuracy, Precision, Recall, F1, ROC-AUC, and PR-AUC. Operational reliability is measured with TPR@FPR points to reflect defender-oriented deployment constraints.
 
+\subsection{LVModel Architecture Details}
+The base LVModel is a Transformer encoder classifier implemented in Flax/JAX. Let input token IDs be
+$\mathbf{X}\in\mathbb{N}^{B\times T}$, where $B$ is batch size and $T$ is sequence length (capped by $T\leq 380$ in the current setup).
+
+\textbf{Embedding and positional encoding:}
+\begin{equation}
+\mathbf{H}_0 = E_{\text{tok}}(\mathbf{X}) + E_{\text{pos}}(1{:}T),
+\end{equation}
+where both embedding tables use normal initialization ($\sigma=0.02$).
+
+\textbf{Shared MHA block implementation:}
+for each encoder layer, a single dense projection computes concatenated QKV:
+\begin{equation}
+\mathrm{QKV} = W_{qkv}\mathbf{H}\in\mathbb{R}^{B\times T\times 3d},
+\end{equation}
+then reshaped to $(3,B,h,T,d_h)$ where $d_h=d/h$ and $h$ is head count.
+Attention logits use scaled dot-product:
+\begin{equation}
+\mathbf{S} = \frac{\mathbf{Q}\mathbf{K}^{\top}}{\sqrt{d_h}},\quad
+\mathbf{A}=\mathrm{softmax}(\mathbf{S}),
+\end{equation}
+followed by attention dropout and output projection back to $d$ dimensions.
+
+\textbf{Encoder block design (pre-norm):}
+each layer applies LayerNorm before attention and feed-forward modules:
+\begin{align}
+\tilde{\mathbf{H}} &= \mathrm{LN}(\mathbf{H}_{l-1}),\\
+\mathbf{A} &= \mathrm{MHA}(\tilde{\mathbf{H}}), \quad
+\mathbf{H}' = \mathbf{H}_{l-1} + \mathbf{A},\\
+\mathbf{F} &= W_2\,\mathrm{Dropout}\!\left(\mathrm{GELU}\!\left(W_1\,\mathrm{LN}(\mathbf{H}')\right)\right),\\
+\mathbf{H}_{l} &= \mathbf{H}' + \mathrm{Dropout}(\mathbf{F}).
+\end{align}
+This is a \textbf{pre-norm Transformer} with two residual paths (attention and FFN), improving optimization stability.
+
+\textbf{Pooling and classification:}
+the sequence representation is mean pooled and passed through a tanh pooler and LayerNorm classifier:
+\begin{align}
+\mathbf{z} &= \frac{1}{T}\sum_{t=1}^{T}\mathbf{H}_{L,t},\\
+\mathbf{p} &= \tanh(W_p\mathbf{z}),\\
+\mathbf{y} &= W_c\,\mathrm{LN}(\mathrm{Dropout}(\mathbf{p})).
+\end{align}
+In experiments, the instantiated architecture uses $d_{\text{model}}=256$, $h=8$, $d_{\text{ff}}=512$, and $L=2$.
+
+\textbf{Metric-learning variants:}
+ArcFace, Contrastive, Triplet, and Multi-Similarity share the same encoder trunk, then add an embedding projection
+($d_{\text{emb}}=256$), LayerNorm, and $\ell_2$ normalization. The projected embedding is consumed by a task-specific head:
+ArcFace angular-margin classifier, or linear logits with auxiliary metric losses (contrastive/triplet/MS).
+
 \subsection{Pipeline Overview}
+Figure~\ref{fig:pipeline} summarizes the end-to-end training and evaluation flow used for baseline and DML variants.
 \begin{figure*}[!t]
 \centering
 \resizebox{\textwidth}{!}{%
@@ -119,7 +171,7 @@ The dataset setting follows the prior project pipeline and preserves the same PE
 \label{fig:pipeline}
 \end{figure*}
 
-\section{Results}
+\section{\textcolor{ctitle}{Results}}
 \subsection{Prior ATC 2024 Baselines}
 \begin{table}[htbp]
 \caption{ML baselines from prior paper}
@@ -127,6 +179,7 @@ The dataset setting follows the prior project pipeline and preserves the same PE
 \footnotesize
 \begin{tabular}{lcccc}
 \toprule
+\rowcolor{mypurple!55}
 Model & Precision & Recall & F1 & Accuracy \\
 \midrule
 Logistic Regression & 0.990086 & 0.990232 & 0.990111 & 0.990112 \\
@@ -144,6 +197,7 @@ XGBoost & 0.990000 & 0.991542 & 0.991566 & 0.991566 \\
 \footnotesize
 \begin{tabular}{lcccc}
 \toprule
+\rowcolor{mypurple!55}
 Model & Precision & Recall & F1 & Accuracy \\
 \midrule
 DistilBERT & 0.9864895 & 0.9865220 & 0.9864705 & 0.986471 \\
@@ -163,6 +217,7 @@ BiLSTM & 0.9507005 & 0.9499545 & 0.9500705 & 0.950102 \\
 \resizebox{\columnwidth}{!}{%
 \begin{tabular}{lccccc}
 \toprule
+\rowcolor{mypurple!55}
 Variant & Accuracy & F1 & ROC-AUC & PR-AUC & TPR@FPR=1e-2 \\
 \midrule
 baseline & 0.9924 & 0.9960 & 0.9983 & 0.9999 & 0.9754 \\
@@ -176,7 +231,7 @@ multi\_similarity & \textbf{0.9946} & \textbf{0.9972} & 0.9978 & 0.9999 & \textb
 \label{tab:new_results}
 \end{table}
 
-\section{Discussion}
+\section{\textcolor{ctitle}{Discussion}}
 The results indicate that DML is helpful but not uniformly so. Multi-Similarity yields the strongest overall profile, improving low-FPR sensitivity while maintaining top-tier F1 and accuracy. Baseline remains highly competitive, indicating a strong representation backbone and training recipe. ArcFace shows a notable mismatch between ranking quality and low-FPR behavior, suggesting sensitivity to margin-scale calibration under class imbalance.
 
 Main findings:
@@ -195,7 +250,7 @@ Main findings:
 \item \textbf{Static-feature bias}: packed or heavily obfuscated binaries may require additional dynamic/contextual signals.
 \end{enumerate}
 
-\section{Conclusion}
+\section{\textcolor{ctitle}{Conclusion}}
 This extended study confirms that text-based PE malware detection can achieve high performance and that DML can further improve deployment-oriented behavior when the objective is carefully selected. Multi-Similarity is the recommended candidate in the current experiments.
 
 \subsection*{Future Work}
