@@ -19,7 +19,7 @@ import pandas as pd
 
 from pe_malware.config import TrainingConfig
 from pe_malware.data import CustomDistilBertTokenizer, Preprocessor, subsample_imbalanced_data
-from pe_malware.models.flax import (
+from pe_malware.models import (
     FlaxLVModel,
     FlaxLVModelWithArcFace,
     FlaxLVModelWithContrastive,
