@@ -32,6 +32,14 @@ env/
 *.csv
 *.tsv
 
+# Backups
+lvforge_backup_*.zip
+weights_backup_*.zip
+
+# Secrets
+.env
+client_secret.json
+
 # OS
 .DS_Store
 Thumbs.db

@@ -5,7 +5,7 @@ PE Malware Detection using Custom Transformers with Deep Metric Learning (JAX/Fl
 ## Project Structure
 
 ```
-pe-malware-metric-learning/
+LVForge/
 ├── src/pe_malware/
 │   ├── config/          # Training configuration
 │   ├── data/            # Data loading, tokenization, preprocessing
@@ -13,7 +13,9 @@ pe-malware-metric-learning/
 │   ├── training/        # Trainers and loss functions
 │   └── evaluation/      # Metrics, plotting, multi-seed analysis
 ├── scripts/
-│   └── train_flax.py    # Training entry point (all loss modes)
+│   ├── train_flax.py    # Training entry point (single loss mode)
+│   └── run_all.py       # Run ALL experiments in one command
+├── backup_full.py       # Backup weights + Google Drive upload (gogcli)
 └── pyproject.toml
 ```
 
@@ -30,14 +32,36 @@ pe-malware-metric-learning/
 ## Usage
 
 ```bash
-# Baseline (cross-entropy / focal loss)
-python scripts/train_flax.py --loss baseline
+# Run ALL 5 experiments in one command
+python scripts/run_all.py
 
-# Deep metric learning variants
+# Run selected experiments only
+python scripts/run_all.py --only arcface triplet
+
+# Run all + backup weights to Google Drive
+python scripts/run_all.py --backup --gdrive --account you@gmail.com
+
+# Or run individual experiments
+python scripts/train_flax.py --loss baseline
 python scripts/train_flax.py --loss arcface
 python scripts/train_flax.py --loss contrastive
 python scripts/train_flax.py --loss triplet
 python scripts/train_flax.py --loss multi_similarity
+```
+
+## Backup & Google Drive Upload
+
+Uses [gogcli](https://github.com/steipete/gogcli) to upload experiment weights to Google Drive.
+
+```bash
+# Zip weights only
+python backup_full.py
+
+# Zip + upload to Google Drive
+python backup_full.py --gdrive --account you@gmail.com
+
+# Upload to a specific folder
+python backup_full.py --gdrive --account you@gmail.com --folder-id FOLDER_ID
 ```
 
 ## Installation
