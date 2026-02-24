@@ -47,6 +47,7 @@ def zip_weights():
 
     print(f"[1/3] Zipping outputs to: {zip_name}...")
     count = 0
+    extra_count = 0
     with zipfile.ZipFile(zip_name, "w", zipfile.ZIP_DEFLATED) as zipf:
         for folder in weight_dirs:
             if not os.path.exists(folder):
@@ -63,16 +64,18 @@ def zip_weights():
         for f in extra_files:
             if os.path.exists(f):
                 zipf.write(f, f)
+                extra_count += 1
                 print(f"  + {f}")
 
-    if count > 0:
+    total = count + extra_count
+    if total > 0:
         size_mb = os.path.getsize(zip_name) / (1024 * 1024)
-        print(f"  {count} files, {size_mb:.1f} MB")
+        print(f"  {total} files ({count} weights, {extra_count} extra), {size_mb:.1f} MB")
         return zip_name
     else:
         if os.path.exists(zip_name):
             os.remove(zip_name)
-        print("  No weight files found to backup.")
+        print("  No files found to backup.")
         return None
 
 
