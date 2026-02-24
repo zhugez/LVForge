@@ -76,37 +76,30 @@ A shared Transformer backbone is used, while objectives/heads vary:
 \centering
 \resizebox{\textwidth}{!}{%
 \begin{tikzpicture}[
-    node distance=8mm and 8mm,
-    box/.style={draw, rounded corners, align=center, minimum height=8mm, minimum width=21mm, fill=blue!6},
-    model/.style={draw, rounded corners, align=center, minimum height=8mm, minimum width=23mm, fill=green!8},
-    metric/.style={draw, rounded corners, align=center, minimum height=8mm, minimum width=24mm, fill=orange!10},
+    node distance=9mm and 10mm,
+    stage/.style={draw, rounded corners, align=center, minimum height=10mm, minimum width=24mm, fill=blue!6},
+    core/.style={draw, rounded corners, align=center, minimum height=10mm, minimum width=30mm, fill=green!10},
+    block/.style={draw, rounded corners, align=left, minimum height=18mm, minimum width=54mm, fill=yellow!12},
+    evalbox/.style={draw, rounded corners, align=center, minimum height=10mm, minimum width=34mm, fill=orange!12},
     arrow/.style={-Latex, thick}
 ]
-    \node[box] (data) {PE Data\\(Texts, label)};
-    \node[box, right=of data] (prep) {Tokenizer +\\Preprocessing};
-    \node[model, right=of prep] (backbone) {Transformer\\Backbone};
-
-    \node[model, above right=10mm and 5mm of backbone] (baseline) {Baseline};
-    \node[model, right=of backbone] (arcface) {ArcFace};
-    \node[model, below right=10mm and 5mm of backbone] (contrastive) {Contrastive};
-    \node[model, below=of arcface] (triplet) {Triplet};
-    \node[model, below=of triplet] (ms) {Multi-Similarity};
-
-    \node[metric, right=18mm of arcface] (eval) {5-seed Eval\\+ Low-FPR};
+    \node[stage] (data) {PE Dataset\\(Texts, label)};
+    \node[stage, right=of data] (prep) {Tokenizer\\+ Preprocessing};
+    \node[core, right=of prep] (backbone) {Shared Transformer\\Backbone};
+    \node[block, right=of backbone] (heads) {\textbf{Objective-head variants}\\[-0.4mm]
+        - baseline (CE/Focal)\\
+        - arcface\\
+        - contrastive\\
+        - triplet\\
+        - multi\_similarity};
+    \node[evalbox, right=of heads] (train) {Training +\\Checkpointing};
+    \node[evalbox, right=of train] (eval) {Evaluation\\(5 seeds, low-FPR)};
 
     \draw[arrow] (data) -- (prep);
     \draw[arrow] (prep) -- (backbone);
-    \draw[arrow] (backbone) -- (baseline);
-    \draw[arrow] (backbone) -- (arcface);
-    \draw[arrow] (backbone) -- (contrastive);
-    \draw[arrow] (backbone) -- (triplet);
-    \draw[arrow] (backbone) -- (ms);
-
-    \draw[arrow] (baseline.east) -- (eval.west);
-    \draw[arrow] (arcface.east) -- (eval.west);
-    \draw[arrow] (contrastive.east) -- (eval.west);
-    \draw[arrow] (triplet.east) -- (eval.west);
-    \draw[arrow] (ms.east) -- (eval.west);
+    \draw[arrow] (backbone) -- (heads);
+    \draw[arrow] (heads) -- (train);
+    \draw[arrow] (train) -- (eval);
 \end{tikzpicture}}
 \caption{Unified pipeline for baseline and DML variants.}
 \label{fig:pipeline}
